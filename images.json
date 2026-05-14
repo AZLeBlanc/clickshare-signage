@@ -3,6 +3,7 @@
   "interval": 15000,
   "transition": 2000,
   "images": [
-    "images/test-wallpaper1.jpg"
+    "images/test-wallpaper1.jpg",
+    "images/test-wallpaper2.jpg"
   ]
 }
