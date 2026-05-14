@@ -1029,6 +1029,69 @@ git push --force
 - Reduce bandwidth usage
 - Enforce consistent quality
 
+#### 8. Hybrid Auto-Refresh (Content Watcher)
+
+> **Status: Future planning — not currently implemented in the repo.**
+
+**Problem:** Base Units load the page once and hold it indefinitely. New images committed to GitHub become live on the CDN within ~2 minutes, but a running display never sees them until the unit reboots or IT intervenes manually. This defeats the goal of marketing being able to update content without IT involvement.
+
+**Why a server-push approach won't work:** GitHub Actions runs in the cloud; Base Units are on an internal corporate network. There is no inbound path from GitHub to the Base Unit's browser after a push. The content watcher must be client-side — the page has to pull.
+
+**Feature:** The slideshow polls `images.json` on a short interval and reloads itself when the image list has changed.
+
+**Design: poll the JSON, reload only on change**
+
+Two timers run independently after page load:
+
+1. **Rotation timer** — existing `setInterval` that cycles through slides (unchanged)
+2. **Watcher timer** — new `setInterval` that fetches `images.json` every 2 minutes
+
+```
+page loads
+  ├── init(): fetch images.json → build slides → start rotation timer
+  └── startWatcher(loadedImages): start watcher timer
+        ↓
+        every 2 minutes:
+          fetch images.json?t=<timestamp>  (cache-busted)
+          compare fresh.images to loadedImages
+          ├── same → do nothing, no interruption to display
+          └── different → location.reload()
+```
+
+**Comparison logic:**
+
+Images are always written in sorted order by the GitHub Actions workflow, so serializing both arrays to a string is a stable, reliable diff:
+
+```js
+JSON.stringify(fresh.images) !== JSON.stringify(loadedImages)
+```
+
+`loadedImages` is captured at init time and passed into the watcher — the watcher closes over it and always compares against the state the page originally loaded with.
+
+**What happens on reload:**
+
+`location.reload()` triggers a full page reload. The browser re-fetches `index.html` and `images.json` (cache-busted). Image files themselves are already cached from the first load, so the reload is fast — the browser does not re-download the JPEGs, just re-renders the slide DOM. The display goes black briefly (~1 second), then resumes with the new content.
+
+**Failure handling:**
+
+If the poll fetch fails (network blip, GitHub outage), the watcher catches the error, logs it, and does nothing. The current slides keep running. It retries on the next interval. The display never goes dark due to a failed poll.
+
+**End-to-end timing:**
+
+| Event | Time |
+|---|---|
+| Marketing uploads image to GitHub | t=0 |
+| GitHub Actions generates new `images.json` | t~2 min |
+| GitHub Pages CDN updated | t~2 min |
+| Watcher picks up change (worst case) | t~4 min |
+| Display reloads with new content | t~4 min |
+
+**Scope:**
+
+The watcher compares image lists only. Changes to `interval` or `transition` in `images.json` do not trigger a reload on their own — they take effect the next time a reload occurs for any reason. This is an acceptable tradeoff for the simplicity it buys.
+
+**Implementation:** One new function `startWatcher(loadedImages)` called at the end of `init()`. No new files, no external dependencies — self-contained in `index.html`.
+
 ### Migration Paths
 
 #### Option A: OneDrive Integration
