@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Signage</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: black;
+      overflow: hidden;
+    }
+
+    #slideshow {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;           /* fills screen, crops to fit */
+      opacity: 0;
+      transition-property: opacity;
+      transition-timing-function: ease-in-out;
+    }
+
+    .slide.active {
+      opacity: 1;
+    }
+
+    /* Loading indicator - shows while images are loading */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-family: system-ui, sans-serif;
+      font-size: 24px;
+    }
+
+    #slideshow:not(:empty) + #loading {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="slideshow"></div>
+  <div id="loading">Loading slideshow...</div>
+
+  <script>
+    async function init() {
+      try {
+        // Fetch config with cache busting so updates are picked up
+        const config = await fetch(`images.json?t=${Date.now()}`)
+          .then(r => r.json());
+
+        const { images, interval, transition } = config;
+        const container = document.getElementById('slideshow');
+
+        if (!images || images.length === 0) {
+          document.getElementById('loading').textContent = 'No images configured';
+          return;
+        }
+
+        // Build img elements from the config list
+        const slides = images.map((src) => {
+          const img = document.createElement('img');
+          img.src = src;
+          img.className = 'slide';
+          img.alt = '';
+          img.style.transitionDuration = `${transition}ms`;
+          container.appendChild(img);
+          return img;
+        });
+
+        // Show first image immediately
+        let current = 0;
+        slides[0].classList.add('active');
+
+        // Only start cycling if there's more than one image
+        if (slides.length > 1) {
+          setInterval(() => {
+            slides[current].classList.remove('active');
+            current = (current + 1) % slides.length;
+            slides[current].classList.add('active');
+          }, interval);
+        }
+
+        console.log(`Slideshow initialized: ${slides.length} images, ${interval}ms interval`);
+      } catch (err) {
+        console.error('Failed to initialize slideshow:', err);
+        document.getElementById('loading').textContent = 'Error loading slideshow';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
